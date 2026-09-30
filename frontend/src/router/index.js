@@ -10,6 +10,7 @@ const routes = [
     children: [
       { path: 'dashboard', component: () => import('../views/Dashboard.vue'), meta: { title: '统计看板' } },
       { path: 'equipment', component: () => import('../views/EquipmentList.vue'), meta: { title: '设备台账' } },
+      { path: 'rack', component: () => import('../views/RackView.vue'), meta: { title: '机架视图' } },
       { path: 'rooms', component: () => import('../views/RoomManage.vue'), meta: { title: '机房机柜' } },
       { path: 'changes', component: () => import('../views/ChangeLog.vue'), meta: { title: '变更记录' } },
       { path: 'system-log', component: () => import('../views/SystemLog.vue'), meta: { title: '系统日志', adminOnly: true } },

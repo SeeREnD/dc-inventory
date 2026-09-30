@@ -11,6 +11,14 @@ export const STATUS_TAG_TYPE = {
   退役: 'info'
 }
 
+export const CATEGORY_COLOR = {
+  服务器: '#409eff',
+  交换机: '#67c23a',
+  存储: '#e6a23c',
+  防火墙: '#f56c6c',
+  其他: '#909399'
+}
+
 export const ROLE_LABEL = {
   admin: '管理员',
   editor: '编辑',

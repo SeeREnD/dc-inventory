@@ -15,6 +15,9 @@
         <el-menu-item index="/equipment">
           <el-icon><Monitor /></el-icon><span>设备台账</span>
         </el-menu-item>
+        <el-menu-item index="/rack">
+          <el-icon><Grid /></el-icon><span>机架视图</span>
+        </el-menu-item>
         <el-menu-item index="/rooms">
           <el-icon><OfficeBuilding /></el-icon><span>机房机柜</span>
         </el-menu-item>
@@ -74,7 +77,7 @@
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Odometer, Monitor, OfficeBuilding, Document, User, ArrowDown, Memo, FolderChecked } from '@element-plus/icons-vue'
+import { Odometer, Monitor, OfficeBuilding, Document, User, ArrowDown, Memo, FolderChecked, Grid } from '@element-plus/icons-vue'
 import api from '../api'
 import { useAuthStore } from '../stores/auth'
 
