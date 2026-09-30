@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      args:
+        REGISTRY: docker.m.daocloud.io/library   # Docker Hub 不通时走国内镜像源
+    container_name: dc-inventory-backend
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data          # SQLite 数据库文件持久化到宿主机 ./data
+    environment:
+      - TZ=Asia/Shanghai
+      # 生产务必设置随机密钥（不填则使用占位默认值）：docker compose -f ... run ... 或在此填写
+      # - DCAM_SECRET_KEY=请改成随机长字符串
+      - TOKEN_EXPIRE_HOURS=12
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REGISTRY: docker.m.daocloud.io/library
+    container_name: dc-inventory-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"                 # 对外访问端口: 浏览器访问 http://<IP>:5173
+    depends_on:
+      backend:
+        condition: service_healthy
