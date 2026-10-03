@@ -93,7 +93,8 @@
         <el-descriptions-item label="品牌 / 型号">{{ [current.brand, current.model].filter(Boolean).join(' / ') || '-' }}</el-descriptions-item>
         <el-descriptions-item label="SN">{{ current.sn || '-' }}</el-descriptions-item>
         <el-descriptions-item label="位置">{{ current.room_name || '-' }} / {{ current.cabinet_name || '-' }} / {{ current.u_position || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="IP">{{ current.ip || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="带内 IP">{{ current.ip_inband_v4 || '-' }}<span v-if="current.ip_inband_v6"> / {{ current.ip_inband_v6 }}</span></el-descriptions-item>
+        <el-descriptions-item label="带外 IP">{{ current.ip_outband_v4 || '-' }}<span v-if="current.ip_outband_v6"> / {{ current.ip_outband_v6 }}</span></el-descriptions-item>
         <el-descriptions-item label="保修到期">{{ current.warranty_end || '-' }}</el-descriptions-item>
         <el-descriptions-item label="责任人">{{ current.owner || '-' }}</el-descriptions-item>
         <el-descriptions-item label="备注">{{ current.remark || '-' }}</el-descriptions-item>

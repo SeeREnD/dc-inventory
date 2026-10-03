@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 # ---------- Auth / User ----------
@@ -72,6 +72,28 @@ class CabinetOut(CabinetIn):
 
 
 # ---------- Equipment ----------
+class CpuSpec(BaseModel):
+    model: Optional[str] = None
+    sockets: Optional[int] = None          # 物理 CPU 颗数
+    cores_per_cpu: Optional[int] = None    # 每颗核心数
+    freq_ghz: Optional[float] = None       # 主频 GHz
+
+
+class GpuSpec(BaseModel):
+    model: Optional[str] = None
+    count: Optional[int] = None            # 张数
+    memory_gb: Optional[int] = None        # 单卡显存 GB
+    purpose: Optional[str] = None          # 计算/推理/渲染/其他
+
+
+class DiskSpec(BaseModel):
+    type: Optional[str] = None             # SSD/SATA-SSD/NVMe/HDD
+    capacity_gb: Optional[int] = None      # 单块容量 GB
+    count: Optional[int] = None            # 块数
+    raid_level: Optional[str] = None       # RAID0/1/5/6/10/直通
+    role: Optional[str] = None             # 系统/数据/缓存
+
+
 class EquipmentIn(BaseModel):
     asset_no: str
     name: str
@@ -82,12 +104,28 @@ class EquipmentIn(BaseModel):
     room_id: Optional[int] = None
     cabinet_id: Optional[int] = None
     u_position: Optional[str] = None
-    ip: Optional[str] = None
+    # 网络地址：带内(业务网) / 带外(管理网,BMC) × IPv4 / IPv6
+    ip_inband_v4: Optional[str] = None
+    ip_inband_v6: Optional[str] = None
+    ip_outband_v4: Optional[str] = None
+    ip_outband_v6: Optional[str] = None
+    # 硬件规格（数量不定，JSON 数组）
+    cpus: Optional[list[CpuSpec]] = None
+    gpus: Optional[list[GpuSpec]] = None
+    disks: Optional[list[DiskSpec]] = None
     status: str = "在用"
     purchase_date: Optional[date] = None
     warranty_end: Optional[date] = None
     owner: Optional[str] = None
     remark: Optional[str] = None
+
+    @field_validator("cpus", "gpus", "disks", mode="before")
+    @classmethod
+    def _ensure_list(cls, v):
+        # 容错：脏数据/手工改库可能塞入非数组，统一降级为 None，避免整表接口 500
+        if v is None or isinstance(v, list):
+            return v
+        return None
 
 
 class EquipmentOut(EquipmentIn):
@@ -96,6 +134,7 @@ class EquipmentOut(EquipmentIn):
     id: int
     room_name: Optional[str] = None
     cabinet_name: Optional[str] = None
+    spec_summary: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -129,6 +168,7 @@ class ImportReport(BaseModel):
     updated: int
     failed: int
     errors: list[str]
+    warnings: list[str] = []
 
 
 class StatsOut(BaseModel):

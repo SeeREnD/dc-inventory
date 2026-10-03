@@ -25,6 +25,21 @@ export const ROLE_LABEL = {
   viewer: '只读'
 }
 
+// 网络地址平面
+export const PLANE_LABEL = {
+  inband: '带内（业务网）',
+  outband: '带外（管理网/BMC）'
+}
+
+// 硬盘类型 / RAID 级别 / 用途 / 角色
+export const DISK_TYPE = ['NVMe', 'SSD', 'SATA-SSD', 'HDD']
+
+export const RAID_LEVEL = ['RAID0', 'RAID1', 'RAID5', 'RAID6', 'RAID10', '直通']
+
+export const GPU_PURPOSE = ['计算', '推理', '渲染', '其他']
+
+export const DISK_ROLE = ['系统', '数据', '缓存']
+
 // 保修到期 → 状态：'expired' | 'soon' | 'ok' | null（无保修）
 export function warrantyState(warrantyEnd) {
   if (!warrantyEnd) return null

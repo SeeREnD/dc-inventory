@@ -5,15 +5,47 @@ from openpyxl import Workbook, load_workbook
 from sqlalchemy.orm import Session
 
 from ..models import Cabinet, ChangeLog, Equipment, Room
+from .spec_utils import cell_to_specs, specs_to_cell
 
+# 导出表头：前 15 列沿用原顺序（第 10 列由 IP 升级为带内IPv4），末尾追加新列
 HEADERS = [
     "资产编号", "设备名称", "类型", "品牌", "型号", "SN序列号",
-    "机房", "机柜", "U位", "IP", "状态", "采购日期", "保修到期",
+    "机房", "机柜", "U位", "带内IPv4", "状态", "采购日期", "保修到期",
     "责任人", "备注",
+    "带内IPv6", "带外IPv4", "带外IPv6", "CPU", "显卡", "硬盘",
 ]
+
+# 兼容旧模板：旧文件的 IP 列映射到带内IPv4
+HEADER_ALIASES = {"IP": "带内IPv4"}
 
 VALID_STATUS = ("在用", "备用", "维修", "报废", "退役")
 VALID_CATEGORY = ("服务器", "交换机", "存储", "防火墙", "其他")
+
+# 字段定义：(模型字段, 表头, 类型)
+TEXT_FIELDS = [
+    ("name", "设备名称", "text"),
+    ("category", "类型", "text"),
+    ("brand", "品牌", "text"),
+    ("model", "型号", "text"),
+    ("sn", "SN序列号", "text"),
+    ("u_position", "U位", "text"),
+    ("status", "状态", "text"),
+    ("purchase_date", "采购日期", "date"),
+    ("warranty_end", "保修到期", "date"),
+    ("owner", "责任人", "text"),
+    ("remark", "备注", "text"),
+]
+IP_FIELDS = [
+    ("ip_inband_v4", "带内IPv4"),
+    ("ip_inband_v6", "带内IPv6"),
+    ("ip_outband_v4", "带外IPv4"),
+    ("ip_outband_v6", "带外IPv6"),
+]
+SPEC_FIELDS = [
+    ("cpus", "CPU", "cpu"),
+    ("gpus", "显卡", "gpu"),
+    ("disks", "硬盘", "disk"),
+]
 
 
 def generate_template() -> bytes:
@@ -23,10 +55,16 @@ def generate_template() -> bytes:
     ws.append(HEADERS)
     ws.append(
         ["DC-2026-0001", "示例服务器", "服务器", "Dell", "R740",
-         "SN123456", "机房A", "A-01", "U10", "192.168.1.10", "在用",
-         "2025-01-15", "2028-01-15", "张三", "示例数据，导入时会自动更新该行"]
+         "SN123456", "机房A", "A-01", "U10", "10.0.0.10", "在用",
+         "2025-01-15", "2028-01-15", "张三", "示例数据，导入时会自动更新该行",
+         "", "10.0.0.11", "",
+         '[{"model": "Intel Xeon Gold 6338", "sockets": 2, "cores_per_cpu": 32, "freq_ghz": 2.0}]',
+         '[{"model": "NVIDIA A100", "count": 4, "memory_gb": 80, "purpose": "计算"}]',
+         '[{"type": "NVMe", "capacity_gb": 3840, "count": 8, "raid_level": "RAID10", "role": "数据"}]']
     )
-    for col, width in zip("ABCDEFGHIJKLMNO", [14, 16, 10, 10, 16, 16, 10, 10, 8, 14, 8, 12, 12, 10, 20]):
+    widths = [14, 16, 10, 10, 16, 16, 10, 10, 8, 14, 8, 12, 12, 10, 20,
+              14, 14, 14, 40, 32, 40]
+    for col, width in zip("ABCDEFGHIJKLMNOPQRSTU", widths):
         ws.column_dimensions[col].width = width
     buf = io.BytesIO()
     wb.save(buf)
@@ -44,10 +82,12 @@ def export_equipment(rows: list[Equipment]) -> bytes:
                 e.asset_no, e.name, e.category, e.brand, e.model, e.sn,
                 e.room.name if e.room else None,
                 e.cabinet.name if e.cabinet else None,
-                e.u_position, e.ip, e.status,
+                e.u_position, e.ip_inband_v4, e.status,
                 e.purchase_date.isoformat() if e.purchase_date else None,
                 e.warranty_end.isoformat() if e.warranty_end else None,
                 e.owner, e.remark,
+                e.ip_inband_v6, e.ip_outband_v4, e.ip_outband_v6,
+                specs_to_cell(e.cpus), specs_to_cell(e.gpus), specs_to_cell(e.disks),
             ]
         )
     buf = io.BytesIO()
@@ -62,7 +102,13 @@ def _parse_date(value) -> date | None:
         return value.date()
     if isinstance(value, date):
         return value
-    return date.fromisoformat(str(value).strip())
+    s = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d", "%Y/%m/%d %H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f"无法识别的日期格式：{s}")
 
 
 def _get_or_create_room(db: Session, name: str | None) -> Room | None:
@@ -87,66 +133,108 @@ def _find_cabinet(db: Session, room: Room | None, name) -> Cabinet | None:
     )
 
 
+def _build_header_map(header_row) -> dict:
+    header_map = {}
+    for idx, h in enumerate(header_row):
+        if h is None:
+            continue
+        name = str(h).strip()
+        header_map[HEADER_ALIASES.get(name, name)] = idx
+    return header_map
+
+
 def import_equipment(db: Session, content: bytes, operator_id: int | None) -> dict:
     wb = load_workbook(io.BytesIO(content), data_only=True)
     ws = wb.active
-    rows = list(ws.iter_rows(min_row=2, values_only=True))
+    rows = ws.iter_rows(values_only=True)
+
+    try:
+        header_row = next(rows)
+    except StopIteration:
+        return {"created": 0, "updated": 0, "failed": 0, "errors": [], "warnings": []}
+    header_map = _build_header_map(header_row)
 
     created = updated = failed = 0
     errors: list[str] = []
+    warnings: list[str] = []
+
+    def cell(row, header):
+        i = header_map.get(header)
+        if i is None or i >= len(row) or row[i] is None:
+            return None
+        return str(row[i]).strip()
 
     for idx, row in enumerate(rows, start=2):
-        if not row or not row[0]:
-            continue  # 空行跳过
+        asset_no = cell(row, "资产编号")
+        if not asset_no:
+            continue  # 空行/无资产编号，跳过
+
         try:
-            (
-                asset_no, name, category, brand, model, sn,
-                room_name, cabinet_name, u_position, ip, status,
-                purchase_date, warranty_end, owner, remark,
-            ) = [str(v).strip() if v is not None else None for v in row[:15]]
-
-            if not asset_no or not name or not category:
-                raise ValueError("资产编号、设备名称、类型为必填项")
-            if category not in VALID_CATEGORY:
-                raise ValueError(f"类型必须是 {'/'.join(VALID_CATEGORY)}")
-            if status is None:
-                status = "在用"
-            if status not in VALID_STATUS:
-                raise ValueError(f"状态必须是 {'/'.join(VALID_STATUS)}")
-
-            room = _get_or_create_room(db, room_name)
-            cabinet = _find_cabinet(db, room, cabinet_name)
-
-            data = dict(
-                name=name, category=category, brand=brand, model=model, sn=sn,
-                room_id=room.id if room else None,
-                cabinet_id=cabinet.id if cabinet else None,
-                u_position=u_position, ip=ip, status=status,
-                purchase_date=_parse_date(purchase_date),
-                warranty_end=_parse_date(warranty_end),
-                owner=owner, remark=remark,
-            )
-
             existing = (
                 db.query(Equipment).filter(Equipment.asset_no == asset_no).first()
             )
-            if existing:
-                if data["sn"]:
-                    sn_dup = (
-                        db.query(Equipment)
-                        .filter(Equipment.sn == data["sn"], Equipment.id != existing.id)
-                        .first()
-                    )
-                    if sn_dup:
-                        raise ValueError(f"SN 序列号 {data['sn']} 已被其他设备使用")
+
+            category = cell(row, "类型")
+            status = cell(row, "状态")
+            name = cell(row, "设备名称")
+
+            if category is not None and category not in VALID_CATEGORY:
+                raise ValueError(f"类型必须是 {'/'.join(VALID_CATEGORY)}")
+            if status is not None and status not in VALID_STATUS:
+                raise ValueError(f"状态必须是 {'/'.join(VALID_STATUS)}")
+            if existing is None:
+                if not name:
+                    raise ValueError("设备名称为必填项")
+                if not category:
+                    raise ValueError("类型为必填项")
+
+            # 只收集“已填写”的字段：更新时空单元格保留原值，新增时缺失字段走模型默认
+            data: dict = {}
+            for key, header, kind in TEXT_FIELDS:
+                val = cell(row, header)
+                if val is None:
+                    continue
+                data[key] = _parse_date(val) if kind == "date" else val
+
+            for key, header in IP_FIELDS:
+                val = cell(row, header)
+                if val is not None:
+                    data[key] = val
+
+            for key, header, kind in SPEC_FIELDS:
+                val = cell(row, header)
+                specs, warn = cell_to_specs(val, kind)
+                if warn:
+                    warnings.append(f"第 {idx} 行：{warn}")
+                if specs is not None:
+                    data[key] = specs
+
+            # 位置：机房/机柜
+            room_name = cell(row, "机房")
+            cabinet_name = cell(row, "机柜")
+            if room_name is not None:
+                room = _get_or_create_room(db, room_name)
+                cabinet = _find_cabinet(db, room, cabinet_name)
+                data["room_id"] = room.id if room else None
+                data["cabinet_id"] = cabinet.id if cabinet else None
+            elif cabinet_name is not None and existing is not None:
+                cabinet = _find_cabinet(db, existing.room, cabinet_name)
+                data["cabinet_id"] = cabinet.id if cabinet else None
+
+            # SN 唯一性
+            sn = data.get("sn")
+            if sn:
+                q = db.query(Equipment).filter(Equipment.sn == sn)
+                if existing is not None:
+                    q = q.filter(Equipment.id != existing.id)
+                if q.first():
+                    raise ValueError(f"SN 序列号 {sn} 已被其他设备使用")
+
+            if existing is not None:
                 for k, v in data.items():
                     setattr(existing, k, v)
                 created_flag = False
             else:
-                if data["sn"] and (
-                    db.query(Equipment).filter(Equipment.sn == data["sn"]).first()
-                ):
-                    raise ValueError(f"SN 序列号 {data['sn']} 已被其他设备使用")
                 existing = Equipment(asset_no=asset_no, **data)
                 db.add(existing)
                 created_flag = True
@@ -170,4 +258,10 @@ def import_equipment(db: Session, content: bytes, operator_id: int | None) -> di
             errors.append(f"第 {idx} 行：{exc}")
 
     db.commit()
-    return {"created": created, "updated": updated, "failed": failed, "errors": errors}
+    return {
+        "created": created,
+        "updated": updated,
+        "failed": failed,
+        "errors": errors,
+        "warnings": warnings,
+    }

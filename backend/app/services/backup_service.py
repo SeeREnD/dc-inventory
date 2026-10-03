@@ -8,7 +8,8 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from ..database import SQLALCHEMY_DATABASE_URL
+from ..database import SQLALCHEMY_DATABASE_URL, engine
+from ..migrations import run_migrations
 from ..models import Setting
 
 DEFAULT_RETENTION_DAYS = 7
@@ -76,6 +77,8 @@ def restore_backup(name: str):
     # 回退前先对当前数据做一次安全快照
     create_backup(prefix="pre-restore-")
     _online_copy(src, db_path())
+    # 旧备份可能是升级前的结构，恢复后立即补迁移，避免 ORM 引用缺列报错
+    run_migrations(engine)
 
 
 def delete_backup(name: str):

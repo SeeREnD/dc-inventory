@@ -8,6 +8,7 @@ from .. import schemas
 from ..auth import get_current_user, require_role
 from ..database import get_db
 from ..models import Cabinet, ChangeLog, Equipment, Room, User
+from ..services.spec_utils import build_spec_summary
 
 router = APIRouter(prefix="/api/equipment", tags=["equipment"])
 
@@ -43,6 +44,7 @@ def to_out(e: Equipment) -> schemas.EquipmentOut:
     out = schemas.EquipmentOut.model_validate(e)
     out.room_name = e.room.name if e.room else None
     out.cabinet_name = e.cabinet.name if e.cabinet else None
+    out.spec_summary = build_spec_summary(e)
     return out
 
 
@@ -75,7 +77,10 @@ def build_filtered_query(
                 Equipment.name.like(kw),
                 Equipment.sn.like(kw),
                 Equipment.model.like(kw),
-                Equipment.ip.like(kw),
+                Equipment.ip_inband_v4.like(kw),
+                Equipment.ip_inband_v6.like(kw),
+                Equipment.ip_outband_v4.like(kw),
+                Equipment.ip_outband_v6.like(kw),
                 Equipment.owner.like(kw),
             )
         )

@@ -53,7 +53,15 @@ class Equipment(Base):
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id"))
     cabinet_id: Mapped[int | None] = mapped_column(ForeignKey("cabinets.id"))
     u_position: Mapped[str | None] = mapped_column(String(20))
-    ip: Mapped[str | None] = mapped_column(String(50))
+    # 网络地址：带内(业务网) / 带外(管理网,BMC/iDRAC) × IPv4 / IPv6
+    ip_inband_v4: Mapped[str | None] = mapped_column(String(50))
+    ip_inband_v6: Mapped[str | None] = mapped_column(String(50))
+    ip_outband_v4: Mapped[str | None] = mapped_column(String(50))
+    ip_outband_v6: Mapped[str | None] = mapped_column(String(50))
+    # 硬件规格（数量不定，以 JSON 数组存储；仅作展示，不进筛选）
+    cpus: Mapped[list | None] = mapped_column(JSON)
+    gpus: Mapped[list | None] = mapped_column(JSON)
+    disks: Mapped[list | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(20), default="在用")  # 在用/备用/维修/报废/退役
     purchase_date: Mapped[datetime | None] = mapped_column(Date)
     warranty_end: Mapped[datetime | None] = mapped_column(Date)

@@ -3,11 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .auth import hash_password
 from .database import Base, SessionLocal, engine
+from .migrations import run_migrations
 from .models import User
 from .routers import backup, changes, equipment, excel, rooms, stats, users
 from .services.backup_service import start_auto_backup
 
 Base.metadata.create_all(bind=engine)
+run_migrations(engine)
 
 
 def create_default_admin():
